@@ -1,6 +1,7 @@
 -module(bpe_proc).
 -author('Maxim Sokhatsky').
 -include("bpe.hrl").
+-include_lib("kernel/include/logger.hrl").
 -behaviour(gen_server).
 -export([start_link/1]).
 -export([init/1,handle_call/3,handle_cast/2,handle_info/2,terminate/2,code_change/3]).
@@ -22,7 +23,7 @@ process_event(Event,Proc) ->
 
     NewProcState = ProcState#process{task = Target},
     FlowReply = fix_reply({Status,{Reason,Target},NewProcState}),
-    kvs:info(?MODULE,"Process ~p Flow Reply ~tp ",[Proc#process.id,{Status,{Reason,Target}}]),
+    ?LOG_INFO("Process ~p Flow Reply ~tp", [Proc#process.id, {Status, {Reason, Target}}]),
 %    kvs:put(transient(NewProcState)),
     FlowReply.
 
@@ -42,7 +43,7 @@ process_flow(Stage,Proc,NoFlow) ->
                    true -> noflow;
                    _ -> bpe_task:targets(Curr,Proc) end,
 
-    kvs:info(?MODULE,"Process ~p Task: ~p Targets: ~p",[Proc#process.id, Curr,Targets]),
+    ?LOG_INFO("Process ~p Task: ~p Targets: ~p", [Proc#process.id, Curr, Targets]),
     {Status,{Reason,Target},ProcState} = case {Targets,Proc#process.task,Stage} of
          {noflow,_,_} -> {reply,{complete,Curr},Proc};
          {[],Term,_}  -> bpe_task:already_finished(Proc);
@@ -61,7 +62,7 @@ process_flow(Stage,Proc,NoFlow) ->
     NewProcState = ProcState#process{task = Target},
 
     FlowReply = fix_reply({Status,{Reason,Target},NewProcState}),
-    kvs:info(?MODULE,"Process ~p Flow Reply ~tp ",[Proc#process.id,{Status,{Reason,Target}}]),
+    ?LOG_INFO("Process ~p Flow Reply ~tp", [Proc#process.id,{ Status, {Reason, Target}}]),
     kvs:put(transient(NewProcState)),
     FlowReply.
 
@@ -84,7 +85,7 @@ handle_call({amend,Form},_,Proc)       ->   process_flow([],Proc#process{docs=pl
 handle_call(Command,_,Proc)            -> { reply,{unknown,Command},Proc }.
 
 init(Process) ->
-    kvs:info(?MODULE,"Process ~p spawned ~p",[Process#process.id,self()]),
+    ?LOG_INFO("Process ~p spawned ~p", [Process#process.id, self()]),
     Proc = case kvs:get(process,Process#process.id) of
          {ok,Exists} -> Exists;
          {error,_} -> Process end,
@@ -94,7 +95,7 @@ init(Process) ->
     {ok, Proc#process{timer=erlang:send_after(rand:uniform(10000),self(),{timer,ping})}}.
 
 handle_cast(Msg, State) ->
-    kvs:info(?MODULE,"Unknown API async: ~p", [Msg]),
+    ?LOG_INFO("Unknown API async: ~p", [Msg]),
     {stop, {error, {unknown_cast, Msg}}, State}.
 
 timer_restart(Diff) -> {X,Y,Z} = Diff, erlang:send_after(500*(Z+60*Y+60*60*X),self(),{timer,ping}).
@@ -112,7 +113,7 @@ handle_info({timer,ping}, State=#process{task=Task,timer=Timer,id=Id,events=Even
                                        {value,Event2,_} -> {Task,element(1,Event2),element(#messageEvent.timeout,Event2)};
                                        false -> Terminal end,
     Time2 = calendar:local_time(),
-    %kvs:info(?MODULE,"Ping: ~p, Task ~p, Event ~p, Record ~p ~n", [Id,Task,Name,Record]),
+    %?LOG_INFO("Ping: ~p, Task ~p, Event ~p, Record ~p", [Id, Task, Name, Record]),
 
     {DD,Diff} = case bpe:hist(Id,1) of
          [#hist{time=Time1}] -> calendar:time_difference(Time1,Time2);
@@ -121,11 +122,12 @@ handle_info({timer,ping}, State=#process{task=Task,timer=Timer,id=Id,events=Even
     case {{DD,Diff} < {Days,Pattern}, Record} of
         {true,_} -> {noreply,State#process{timer=timer_restart(ping())}};
         {false,timeoutEvent} ->
-            kvs:info(?MODULE,"BPE process ~p: next step by timeout. ~nTime Diff is ~p~n",[Id,{DD,Diff}]),
+            ?LOG_INFO("BPE process ~p: next step by timeout. Time Diff is ~p", [Id, {DD, Diff}]),
             case process_flow([],State) of
                 {reply,_,NewState} -> {noreply,NewState#process{timer=timer_restart(ping())}};
                 {stop,normal,_,NewState} -> {stop,normal,NewState} end;
-        {false,_} -> kvs:info(?MODULE,"BPE process ~p: Closing Timeout. ~nTime Diff is ~p~n",[Id,{DD,Diff}]),
+        {false,_} ->
+            ?LOG_INFO("BPE process ~p: Closing Timeout. Time Diff is ~p", [Id, {DD, Diff}]),
             case is_pid(Pid) of
                 true -> Pid ! {direct,{bpe,terminate,{Name,{Days,Pattern}}}};
                 false -> skip end,
@@ -133,16 +135,16 @@ handle_info({timer,ping}, State=#process{task=Task,timer=Timer,id=Id,events=Even
             {stop,normal,State} end;
 
 handle_info({'DOWN', _MonitorRef, _Type, _Object, _Info} = Msg, State = #process{id=Id}) ->
-    kvs:info(?MODULE, "connection closed, shutting down session:~p", [Msg]),
+    ?LOG_INFO( "connection closed, shutting down session: ~p", [Msg]),
     bpe:cache({process,Id},undefined),
     {stop, normal, State};
 
 handle_info(Info, State=#process{}) ->
-    kvs:info(?MODULE,"Unrecognized info: ~p", [Info]),
+    ?LOG_INFO("Unrecognized info: ~p", [Info]),
     {noreply, State}.
 
 terminate(Reason, #process{id=Id}) ->
-    kvs:info(?MODULE,"Terminating session Id cache: ~p~n Reason: ~p", [Id,Reason]),
+    ?LOG_INFO("Terminating session Id cache: ~p Reason: ~p", [Id, Reason]),
     spawn(fun() -> supervisor:delete_child(bpe_sup,Id) end),
     bpe:cache({process,Id},undefined),
     ok.
@@ -161,10 +163,11 @@ set_rec_in_proc(Proc, [H|T]) ->
     set_rec_in_proc(ProcNew, T).
 
 match(Rec1, Rec2) ->
-    F = fun ({X,[]}) -> true;
-            ({[],Y}) -> true;
-             ({X,X}) -> true;
-             ({X,Y}) -> false end,
+    F = fun ({_, []}) -> true;
+            ({[], _}) -> true;
+            ({X, X})  -> true;
+            ({_, _})  -> false
+        end,
 
     lists:all(F,
     lists:zip(tuple_to_list(Rec1),

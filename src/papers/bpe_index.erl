@@ -1,6 +1,7 @@
 -module(bpe_index).
 -copyright('Maxim Sokhatsky').
 -compile(export_all).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("n2o/include/n2o.hrl").
 -include_lib("bpe/include/bpe.hrl").
 -include_lib("nitro/include/nitro.hrl").
@@ -39,12 +40,12 @@ event(create) ->
     nitro:show(frms);
 
 event({'Spawn',_}) ->
-    io:format("trsty: ~p~n",[(nitro:to_atom(nitro:q(process_type_pi_bpe_act)))]),
+    ?LOG_DEBUG("trsty: ~p~n",[(nitro:to_atom(nitro:q(process_type_pi_bpe_act)))]),
     {ok,Id} = bpe:start((nitro:to_atom(nitro:q(process_type_pi_bpe_act))):def(), []),
     nitro:insert_after(header, bpe_row:new(forms:atom([row,Id]),bpe:process(Id))),
     nitro:hide(frms),
     nitro:show(ctrl),
-    n2o:info(?MODULE,"BPE: ~p.~n", [Id]);
+    ?LOG_INFO("BPE: ~p.", [Id]);
 
 event({'Discard',[]}) ->
     nitro:hide(frms),
@@ -52,7 +53,7 @@ event({'Discard',[]}) ->
 
 event({Event,Name}) ->
     nitro:wire(lists:concat(["console.log(\"",io_lib:format("~p",[{Event,Name}]),"\");"])),
-    n2o:info(?MODULE,"Event:~p.~n", [{Event,Name}]);
+    ?LOG_INFO("Event:~p.", [{Event,Name}]);
 
 event(Event) ->
-    n2o:info(?MODULE,"Unknown:~p.~n", [Event]).
+    ?LOG_INFO("Unknown:~p.", [Event]).
