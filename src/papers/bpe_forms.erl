@@ -1,6 +1,7 @@
 -module(bpe_forms).
 -copyright('Maxim Sokhatsky').
 -compile(export_all).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("n2o/include/n2o.hrl").
 -include_lib("nitro/include/nitro.hrl").
 
@@ -12,11 +13,11 @@ event({client,{form,Module}}) ->
 event(init) ->
     nitro:clear(stand),
     [ self() ! {client,{form,F}} || F <- application:get_env(forms, registry, []) ],
-    n2o:info(?MODULE,"HELO.~n",[]);
+    ?LOG_INFO("HELO.", []);
 
 event({Event,Name}) ->
     nitro:wire(lists:concat(["console.log(\"",io_lib:format("~p",[{Event,Name}]),"\");"])),
-    n2o:info(?MODULE,"Event:~p.~n", [{Event,Name}]);
+    ?LOG_INFO("Event: ~p.", [{Event,Name}]);
 
 event(Event) ->
-    n2o:info(?MODULE,"Unknown:~p.~n", [Event]).
+    ?LOG_INFO("Unknown: ~p.", [Event]).

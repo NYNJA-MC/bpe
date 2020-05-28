@@ -2,6 +2,7 @@
 -behaviour(application).
 -include("bpe.hrl").
 -include_lib("kvs/include/feed.hrl").
+-include_lib("kernel/include/logger.hrl").
 -export([start/2, stop/1, worker/1]).
 
 start(_StartType, _StartArgs) ->
@@ -24,4 +25,4 @@ worker(#process{id=Id}=P) ->
             __ -> skip end.
 
 worker_do({Days,_Time},_) when Days >= 14 -> skip;
-worker_do({_Days,_Time},P) -> kvs:info(?MODULE,"BPE Start: ~p~n",[bpe:start(P,[])]).
+worker_do({_Days,_Time},P) -> ?LOG_INFO("BPE Start: ~p", [bpe:start(P, [])]).

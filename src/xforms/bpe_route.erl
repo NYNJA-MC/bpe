@@ -1,4 +1,5 @@
 -module(bpe_route).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("n2o/include/n2o.hrl").
 -export([init/2, finish/2]).
 
@@ -6,7 +7,7 @@ finish(State, Ctx) -> {ok, State, Ctx}.
 init(State, #cx{req=Req}=Cx) ->
     #{path:=Path}=Req,
     Fix  = route_prefix(Path),
-    n2o:info(?MODULE,"Route: ~p~n",[{Fix,Path}]),
+    ?LOG_INFO("Route: ~p", [{Fix,Path}]),
     {ok, State, Cx#cx{path=Path,module=Fix}}.
 
 route_prefix(<<"/ws/",P/binary>>) -> route(P);
